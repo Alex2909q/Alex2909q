@@ -1,0 +1,47 @@
+.plus{
+    padding: 70px 0 80px 0;
+    
+
+    &__title{
+        text-align: center;
+        font-size:30px ;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: rgb(13, 13, 13)
+    }
+    &__wrapper{
+        display: flex;
+        max-width: 950px;
+        justify-content: space-between;
+    }
+    &__block{
+        display: flex;
+        flex-direction: column;
+        margin-top: 60px;
+        max-width: 238px}
+        &__img{
+            width: 70px;
+            margin: 0 auto;
+        }
+       &__subtitle{
+        margin-top: 38px;
+        text-align: center;
+        font-size:18px ;
+        font-weight: 700;
+        color: black;
+        max-width: 238px
+       }
+&__word{
+    text-align: center;
+    margin-top: 26px;
+    font-size:14px ;
+        font-weight: 300;
+        color: black;
+        max-width: 238px;
+        a{
+            color: red;
+            text-decoration: underline;
+        }
+}
+        }
+    

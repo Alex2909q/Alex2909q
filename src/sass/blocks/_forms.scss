@@ -1,0 +1,21 @@
+.fed-form{
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    width: 300px;
+    input{
+        height: 50px;
+        border-radius: 5px;
+        background-color: #fff;
+        margin-bottom: 15px;
+        border: none;
+        padding: 0 20px;
+        font-size: 14px;
+        font-weight: 300;
+        color: #4b4b4b;
+        &:last-child{
+            margin-bottom: 20px;	
+        }
+    
+    }
+}
