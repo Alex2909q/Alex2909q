@@ -8,6 +8,11 @@ on:
   pull_request:
     paths: ["zvukaryk-android/**"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Створити GitHub Release з цим тегом (наприклад v0.2.0). Порожньо — лише збірка."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -75,18 +80,22 @@ jobs:
           path: zvukaryk-android/app/build/reports/tests/
 
       - name: Name APKs for the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        env:
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
-          V="${GITHUB_REF_NAME#v}"
+          V="${TAG#v}"
           mkdir -p release
           cp app/build/outputs/apk/release/app-release.apk "release/zvukaryk-$V.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "release/zvukaryk-$V-debug.apk"
 
-      - name: Publish GitHub release on tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          name: Звукарик ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Звукарик ${{ inputs.release_tag || github.ref_name }}
           files: |
             zvukaryk-android/release/*.apk
           generate_release_notes: true
