@@ -78,12 +78,12 @@ fun MirrorScreen(vm: AppViewModel, onBack: () -> Unit) {
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(ArticulationExercises.all.indices.toList()) { i ->
                 val ex = ArticulationExercises.all[i]
-                SelectableChip(ex.name, selected == i, { selected = i; vm.tts.speak("${ex.name}. ${ex.childCue}") }, emoji = ex.emoji)
+                SelectableChip(ex.name, selected == i, { selected = i; vm.voice.say("${ex.name}. ${ex.childCue}") }, emoji = ex.emoji)
             }
         }
         Spacer(Modifier.weight(1f))
         Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BigButton("Озвучити", onClick = { vm.tts.speak(exercise.childCue) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink)
+            BigButton("Озвучити", onClick = { vm.voice.say(exercise.childCue) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink)
             BigButton(if (running) "Пауза" else "Рух", onClick = { running = !running }, modifier = Modifier.weight(1f), emoji = if (running) "⏸️" else "▶️")
         }
     }

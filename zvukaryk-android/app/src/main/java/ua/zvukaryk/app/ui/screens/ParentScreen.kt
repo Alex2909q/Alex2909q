@@ -153,16 +153,7 @@ private fun SettingsTab(state: AppState, vm: AppViewModel, onReset: () -> Unit) 
     Spacer(Modifier.height(12.dp))
     ClaudeSettingsCard(state, vm)
     Spacer(Modifier.height(12.dp))
-    SoftCard {
-        Text("Озвучення", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            if (!vm.tts.ready) "Синтезатор мовлення ще завантажується…"
-            else if (vm.tts.ukrainianAvailable) "Український голос доступний ✅"
-            else "Український голос не знайдено. Встановіть «Google Синтезатор мовлення» та завантажте українську мову в налаштуваннях Android (Спеціальні можливості → Синтез мовлення).",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
+    SoundCheckCard(vm.tts, Modifier.fillMaxWidth())
     Spacer(Modifier.height(12.dp))
     SoftCard {
         Text("Приватність", style = MaterialTheme.typography.titleLarge)

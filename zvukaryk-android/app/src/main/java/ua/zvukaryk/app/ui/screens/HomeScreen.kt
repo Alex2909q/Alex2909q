@@ -60,7 +60,9 @@ fun HomeScreen(
             }
             IconButton(onClick = { gate = true }) { Icon(Icons.Default.Settings, contentDescription = "Для батьків") }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
+        SoundCheckCard(vm.tts, Modifier.fillMaxWidth(), compact = true)
+        Spacer(Modifier.height(8.dp))
 
         // Головна картка
         Column(

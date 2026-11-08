@@ -37,7 +37,7 @@ fun OnboardingScreen(vm: AppViewModel, onFinished: () -> Unit) {
         LinearProgressIndicator(progress = { (step + 1) / 5f }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
         Spacer(Modifier.height(16.dp))
         when (step) {
-            0 -> WelcomeStep(onNext = { step = 1 })
+            0 -> WelcomeStep(vm, onNext = { step = 1 })
             1 -> ProfileStep(profile, onChange = { profile = it }, onNext = { step = 2 })
             2 -> ScreeningStep(screening, onChange = { screening = it }, onNext = { step = 3 })
             3 -> SoundCheckStep(profile.ageYears, problemSounds, onNext = {
@@ -55,7 +55,8 @@ fun OnboardingScreen(vm: AppViewModel, onFinished: () -> Unit) {
 }
 
 @Composable
-private fun WelcomeStep(onNext: () -> Unit) {
+private fun WelcomeStep(vm: AppViewModel, onNext: () -> Unit) {
+    LaunchedEffect(Unit) { vm.voice.say("Привіт! Я Звукарик. Я допоможу вчитися гарно вимовляти звуки.") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(24.dp))
         Text("🗣️", fontSize = 80.sp)
@@ -78,6 +79,8 @@ private fun WelcomeStep(onNext: () -> Unit) {
             Text("Застосунок допомагає закріплювати звуки вдома й не замінює логопеда. Постановку звука, " +
                 "виправлення міжзубної чи горлової вимови робить фахівець. Усі записи голосу залишаються на пристрої.")
         }
+        Spacer(Modifier.height(16.dp))
+        SoundCheckCard(vm.tts, Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
         BigButton("Почати", onClick = onNext, modifier = Modifier.fillMaxWidth(), emoji = "🚀")
     }
