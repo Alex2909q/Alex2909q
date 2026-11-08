@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Кеш (тимчасові записи голосу) Android не резервує за замовчуванням; налаштування DataStore — резервуються. -->
+<full-backup-content />
