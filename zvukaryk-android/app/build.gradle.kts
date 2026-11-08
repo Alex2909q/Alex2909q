@@ -58,7 +58,13 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            merges += "META-INF/services/**"
+        }
+    }
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 
@@ -83,6 +89,7 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+    implementation(libs.anthropic.java)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

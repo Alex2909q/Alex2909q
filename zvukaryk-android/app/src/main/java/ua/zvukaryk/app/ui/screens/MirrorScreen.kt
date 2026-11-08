@@ -50,11 +50,12 @@ fun MirrorScreen(vm: AppViewModel, onBack: () -> Unit) {
                         factory = { ctx ->
                             PreviewView(ctx).apply {
                                 scaleType = PreviewView.ScaleType.FILL_CENTER
+                                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                                 val future = ProcessCameraProvider.getInstance(ctx)
                                 future.addListener({
-                                    val provider = future.get()
-                                    val preview = Preview.Builder().build().also { it.surfaceProvider = this.surfaceProvider }
                                     runCatching {
+                                        val provider = future.get()
+                                        val preview = Preview.Builder().build().also { it.surfaceProvider = this.surfaceProvider }
                                         provider.unbindAll()
                                         provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_FRONT_CAMERA, preview)
                                     }

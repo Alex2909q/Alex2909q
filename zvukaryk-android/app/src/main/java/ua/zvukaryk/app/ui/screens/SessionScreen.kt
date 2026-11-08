@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ua.zvukaryk.app.AppViewModel
+import ua.zvukaryk.app.ai.ClaudeAgent
 import ua.zvukaryk.app.data.content.BreathingGame
 import ua.zvukaryk.app.data.model.*
 import ua.zvukaryk.app.domain.ListeningRound
@@ -82,8 +83,10 @@ fun SessionScreen(state: AppState, vm: AppViewModel, soundId: String, onExit: ()
     }
 
     val step = plan.steps[stepIndex]
+    val task = remember(stepIndex) { vm.voice.taskFor(step) }
+    LaunchedEffect(stepIndex) { vm.voice.say(task) }
     Column(Modifier.fillMaxSize().padding(top = 4.dp)) {
-        StepHeader(step.title, stepIndex, plan.steps.size, onExit = { exitDialog = true })
+        StepHeader(step.title, stepIndex, plan.steps.size, onExit = { exitDialog = true }, onRepeatTask = { vm.voice.say(task) })
         Box(Modifier.weight(1f)) {
             key(stepIndex) {
                 when (step) {
@@ -94,6 +97,7 @@ fun SessionScreen(state: AppState, vm: AppViewModel, soundId: String, onExit: ()
                     is SessionStep.Practice -> PracticeStep(step, vm, state.settings, hasMic, onRate = onRate, onDone = nextStep)
                     is SessionStep.Listening -> ListeningStep(step, vm, onAnswer = { ok -> listeningTotal++; if (ok) listeningCorrect++ }, onDone = nextStep)
                     is SessionStep.Conversation -> ConversationStep(step, vm, onRate = onRate, onDone = nextStep)
+                    is SessionStep.Story -> StoryStep(step, vm, onRate = onRate, onDone = nextStep)
                 }
             }
         }
@@ -123,7 +127,7 @@ private fun WarmupStep(step: SessionStep.Warmup, vm: AppViewModel, onDone: () ->
     val target = if (ex.mode == ExerciseMode.HOLD) ex.holdSeconds else ex.repetitions
     val setsTarget = if (ex.mode == ExerciseMode.HOLD) 3 else 1
 
-    LaunchedEffect(index) { vm.tts.speak("${ex.name}. ${ex.childCue}") }
+    LaunchedEffect(index) { if (index > 0) vm.voice.say("${ex.name}. ${ex.childCue}") }
     LaunchedEffect(running, index) {
         if (running) {
             counter = 0
@@ -134,7 +138,7 @@ private fun WarmupStep(step: SessionStep.Warmup, vm: AppViewModel, onDone: () ->
             }
             running = false
             setsDone++
-            vm.tts.speak(praise.random())
+            vm.voice.say(praise.random())
         }
     }
 
@@ -171,13 +175,13 @@ private fun BreathingStep(game: BreathingGame, vm: AppViewModel, hasMic: Boolean
     val recording by vm.recorder.isRecording.collectAsStateWithLifecycle()
     var blow by remember { mutableFloatStateOf(0f) }
     var rounds by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { vm.tts.speak(game.instruction); if (hasMic) vm.recorder.start() }
+    LaunchedEffect(Unit) { if (hasMic) vm.recorder.start() }
     DisposableEffect(Unit) { onDispose { vm.recorder.stop() } }
     LaunchedEffect(recording) {
         while (recording) {
             delay(100)
             blow = if (level > 0.15f) minOf(1f, blow + 0.1f / game.targetSeconds) else maxOf(0f, blow - 0.02f)
-            if (blow >= 1f) { rounds++; blow = 0f; vm.tts.speak(praise.random()); delay(1500) }
+            if (blow >= 1f) { rounds++; blow = 0f; vm.voice.say(praise.random()); delay(1500) }
         }
     }
     val scale by animateFloatAsState(0.5f + blow, label = "balloon")
@@ -201,7 +205,6 @@ private fun BreathingStep(game: BreathingGame, vm: AppViewModel, hasMic: Boolean
 
 @Composable
 private fun PlacementStep(sound: SpeechSound, vm: AppViewModel, onDone: () -> Unit) {
-    LaunchedEffect(Unit) { vm.tts.speak(sound.articulation.childCue) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         ParentTip("Покажіть положення язика на собі, нехай дитина повторить перед дзеркалом. Губи: ${sound.articulation.lips} Язик: ${sound.articulation.tongue}")
         MouthAnimation(sound.articulation.pose, Modifier.fillMaxWidth().height(240.dp))
@@ -210,10 +213,93 @@ private fun PlacementStep(sound: SpeechSound, vm: AppViewModel, onDone: () -> Un
         Text("${sound.emoji} ${sound.onomatopoeia}", style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BigButton("Послухати", onClick = { vm.tts.speak(sound.onomatopoeia) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink)
+            BigButton("Послухати", onClick = { vm.voice.say(sound.onomatopoeia) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink)
             BigButton("Зрозуміло", onClick = onDone, modifier = Modifier.weight(1f), emoji = "👍")
         }
+        if (vm.claude.isConfigured) {
+            Spacer(Modifier.height(10.dp))
+            ClaudeHintButton(label = "Звукарику, поясни інакше", onRequest = { vm.claude.explainSoundDifferently(sound.id) })
+        }
         Spacer(Modifier.height(20.dp))
+    }
+}
+
+/** Кнопка-запит до помічника Claude: показує відповідь текстом; озвучення робить сам агент через speak_to_child. */
+@Composable
+fun ClaudeHintButton(label: String, onRequest: suspend () -> ClaudeAgent.Result, modifier: Modifier = Modifier) {
+    var busy by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Column(modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = {
+                busy = true; error = null
+                scope.launch {
+                    when (val r = onRequest()) {
+                        is ClaudeAgent.Result.Text -> text = r.text
+                        is ClaudeAgent.Result.Error -> error = r.message
+                    }
+                    busy = false
+                }
+            },
+            enabled = !busy, modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (busy) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("Звукарик думає…") }
+            else Text("✨ $label")
+        }
+        text?.let { Spacer(Modifier.height(6.dp)); SoftCard(color = Color(0xFFF3ECFF)) { Text(it, style = MaterialTheme.typography.bodyLarge) } }
+        error?.let { Spacer(Modifier.height(6.dp)); Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+    }
+}
+
+/* ----------------------------- Казка від Звукарика (Claude) ----------------------------- */
+
+@Composable
+private fun StoryStep(step: SessionStep.Story, vm: AppViewModel, onRate: (Rating) -> Unit, onDone: () -> Unit) {
+    var sentences by remember { mutableStateOf<List<String>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var index by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        when (val r = vm.claude.storyForChild(step.sound.id)) {
+            is ClaudeAgent.Result.Text -> sentences = ClaudeAgent.splitSentences(r.text).take(8)
+            is ClaudeAgent.Result.Error -> error = r.message
+        }
+        loading = false
+    }
+    LaunchedEffect(index, sentences) { sentences.getOrNull(index)?.let { vm.voice.say(it, slow = true) } }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        ParentTip("Казку склав помічник Claude зі слів на звук ${step.sound.letter}. Дитина повторює кожне речення; оцініть, чи звук був чітким. Текст надсилається до Anthropic API, аудіо — ні.")
+        Spacer(Modifier.height(8.dp))
+        when {
+            loading -> {
+                Spacer(Modifier.height(40.dp)); CircularProgressIndicator(); Spacer(Modifier.height(12.dp))
+                Text("Звукарик складає казку…", style = MaterialTheme.typography.titleMedium)
+            }
+            error != null -> {
+                Text("Казка сьогодні не вийшла: $error", color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                BigButton("Далі", onClick = onDone, modifier = Modifier.fillMaxWidth(), emoji = "➡️")
+            }
+            sentences.isEmpty() -> { LaunchedEffect(Unit) { onDone() } }
+            else -> {
+                val sentence = sentences.getOrNull(index) ?: run { LaunchedEffect(Unit) { onDone() }; return@Column }
+                Text("Речення ${index + 1} з ${sentences.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                EmojiCard("📖", sentence, Modifier.fillMaxWidth(), hint = "Послухай і повтори", onClick = { vm.voice.say(sentence, slow = true) })
+                Spacer(Modifier.height(12.dp))
+                BigButton("Ще раз", onClick = { vm.voice.say(sentence, slow = true) }, modifier = Modifier.fillMaxWidth(), emoji = "🔊", color = Sunny, contentColor = Ink)
+                Spacer(Modifier.height(12.dp))
+                Text("Як вийшло? Оцінює дорослий:", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(6.dp))
+                RatingRow(onRate = { r -> onRate(r); if (index + 1 < sentences.size) index++ else onDone() })
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onDone, modifier = Modifier.align(Alignment.End)) { Text("Пропустити крок") }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -230,9 +316,9 @@ private fun IsolatedStep(step: SessionStep.Isolated, vm: AppViewModel, hasMic: B
     var feedback by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) { vm.tts.speak(game.instruction); if (hasMic) vm.recorder.start() }
+    LaunchedEffect(Unit) { if (hasMic) vm.recorder.start() }
     DisposableEffect(Unit) { onDispose { vm.recorder.stop() } }
-    val autoMode = hasMic && game.type != IsolatedGameType.PULSED
+    val autoMode = hasMic && recording && game.type != IsolatedGameType.PULSED
     LaunchedEffect(voiced) { if (autoMode && !reached && voiced >= game.targetSeconds) reached = true }
 
     val progress = if (autoMode) (voiced / game.targetSeconds).coerceIn(0f, 1f) else 0f
@@ -266,7 +352,7 @@ private fun IsolatedStep(step: SessionStep.Isolated, vm: AppViewModel, hasMic: B
         RatingRow(enabled = !autoMode || reached, onRate = { r ->
             onRate(r); done++; reached = false
             feedback = if (r == Rating.CORRECT) praise.random() else encourage.random()
-            vm.tts.speak(feedback!!)
+            vm.voice.say(feedback!!)
             scope.launch { delay(1200); feedback = null }
             if (done >= step.trials) { vm.recorder.stop(); onDone() }
         })
@@ -293,7 +379,7 @@ private fun PracticeStep(step: SessionStep.Practice, vm: AppViewModel, settings:
     val isWordLevel = step.level == Level.WORDS || step.level == Level.SYLLABLES
 
     // Зразок озвучуємо автоматично лише для коротких одиниць; речення — за кнопкою, щоб не збивати темп.
-    LaunchedEffect(index) { if (settings.ttsEnabled && item.text.length <= 40) vm.tts.speak(item.text, slow = isWordLevel) }
+    LaunchedEffect(index) { if (settings.ttsEnabled && item.text.length <= 40) vm.voice.say(item.text, slow = isWordLevel) }
     DisposableEffect(Unit) { onDispose { vm.recorder.stop(); vm.recorder.stopPlayback() } }
 
     fun record() {
@@ -323,7 +409,7 @@ private fun PracticeStep(step: SessionStep.Practice, vm: AppViewModel, settings:
         Spacer(Modifier.height(6.dp))
         Text("${index + 1} / ${step.items.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
-        EmojiCard(item.emoji, item.text, Modifier.fillMaxWidth(), hint = item.hint, onClick = { vm.tts.speak(item.text, slow = isWordLevel) })
+        EmojiCard(item.emoji, item.text, Modifier.fillMaxWidth(), hint = item.hint, onClick = { vm.voice.say(item.text, slow = isWordLevel) })
         Spacer(Modifier.height(10.dp))
 
         when (phase) {
@@ -350,7 +436,7 @@ private fun PracticeStep(step: SessionStep.Practice, vm: AppViewModel, settings:
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BigButton("Зразок", onClick = { vm.tts.speak(item.text, slow = isWordLevel) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink, enabled = phase == TrialPhase.IDLE || phase == TrialPhase.RATE)
+            BigButton("Зразок", onClick = { vm.voice.say(item.text, slow = isWordLevel) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink, enabled = phase == TrialPhase.IDLE || phase == TrialPhase.RATE)
             BigButton("Запиши себе", onClick = { record() }, modifier = Modifier.weight(1.3f), emoji = "🎤", color = Coral, enabled = hasMic && (phase == TrialPhase.IDLE || phase == TrialPhase.RATE))
         }
         if (settings.speechRecognitionEnabled && vm.speechChecker.isAvailable && step.level >= Level.WORDS) {
@@ -364,7 +450,7 @@ private fun PracticeStep(step: SessionStep.Practice, vm: AppViewModel, settings:
             onRate(r)
             correctStreak = if (r == Rating.CORRECT) correctStreak + 1 else 0
             // Зворотний зв'язок не на кожну спробу (принцип зниженої частоти KR): хвалимо кожну 3-тю правильну.
-            if (r == Rating.CORRECT && correctStreak % 3 == 0) { feedback = praise.random(); vm.tts.speak(feedback!!) }
+            if (r == Rating.CORRECT && correctStreak % 3 == 0) { feedback = praise.random(); vm.voice.say(feedback!!) }
             else if (r == Rating.WRONG) { feedback = encourage.random() }
             else feedback = null
             scope.launch { delay(900); feedback = null }
@@ -396,7 +482,7 @@ private fun ListeningStep(step: SessionStep.Listening, vm: AppViewModel, onAnswe
     if (round == null) { LaunchedEffect(Unit) { onDone() }; return }
     var chosen by remember(index) { mutableStateOf<WordItem?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(index) { delay(300); vm.tts.speak(round.target.text, slow = true) }
+    LaunchedEffect(index) { delay(300); vm.voice.say(round.target.text, slow = true) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         ParentTip("Фонематичний слух: дитина спочатку має ПОЧУТИ різницю між звуками, тоді й вимова закріплюється швидше. Якщо озвучення не працює — прочитайте слово самі.")
@@ -422,7 +508,7 @@ private fun ListeningStep(step: SessionStep.Listening, vm: AppViewModel, onAnswe
                         chosen = opt
                         val ok = isTarget
                         onAnswer(ok)
-                        vm.tts.speak(if (ok) praise.random() else "Це «${opt.text}». А «${round.target.text}» — ось тут.")
+                        vm.voice.say(if (ok) praise.random() else "Це «${opt.text}». А «${round.target.text}» — ось тут.")
                         scope.launch { delay(1600); if (index + 1 < step.rounds.size) index++ else onDone() }
                     },
                 ) {
@@ -434,7 +520,7 @@ private fun ListeningStep(step: SessionStep.Listening, vm: AppViewModel, onAnswe
             }
         }
         Spacer(Modifier.height(16.dp))
-        BigButton("Повторити слово", onClick = { vm.tts.speak(round.target.text, slow = true) }, modifier = Modifier.fillMaxWidth(), emoji = "🔊", color = Sunny, contentColor = Ink)
+        BigButton("Повторити слово", onClick = { vm.voice.say(round.target.text, slow = true) }, modifier = Modifier.fillMaxWidth(), emoji = "🔊", color = Sunny, contentColor = Ink)
         Spacer(Modifier.height(8.dp))
         TextButton(onClick = onDone, modifier = Modifier.align(Alignment.End)) { Text("Пропустити крок") }
     }
@@ -447,7 +533,7 @@ private fun ConversationStep(step: SessionStep.Conversation, vm: AppViewModel, o
     var index by remember { mutableIntStateOf(0) }
     val prompt = step.prompts.getOrNull(index)
     if (prompt == null) { LaunchedEffect(Unit) { onDone() }; return }
-    LaunchedEffect(index) { vm.tts.speak(prompt) }
+    LaunchedEffect(index) { if (index > 0) vm.voice.say(prompt) }
     Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         ParentTip("Мета — перенести звук у вільне мовлення. Слухайте 1–2 хвилини, потім оцініть загальне враження: чи звук ${step.sound.letter} звучав чисто.")
         Spacer(Modifier.height(12.dp))
@@ -468,9 +554,17 @@ private fun FinishScreen(
 ) {
     var sticker by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf(false) }
+    var claudeTip by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         vm.recordSession(sound.id, level, trials, correct, almost, durationSec) { s -> sticker = s; saved = true }
-        vm.tts.speak("Ура! Заняття завершено. Ти молодець!")
+        if (vm.claude.isConfigured && trials > 0) {
+            when (val r = vm.claude.sessionSummary(sound.id, level, trials, correct, almost)) {
+                is ClaudeAgent.Result.Text -> claudeTip = r.text
+                is ClaudeAgent.Result.Error -> vm.voice.say("Ура! Заняття завершено. Ти молодець!")
+            }
+        } else {
+            vm.voice.say("Ура! Заняття завершено. Ти молодець!")
+        }
     }
     val accuracy = if (trials == 0) 0 else ((correct + almost / 2f) / trials * 100).toInt()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -510,6 +604,14 @@ private fun FinishScreen(
                 else -> "Якщо звук виходить рідко кілька занять поспіль — можливо, його ще не «поставлено». Порадьтеся з логопедом."
             },
         )
+        claudeTip?.let {
+            Spacer(Modifier.height(12.dp))
+            SoftCard(color = Color(0xFFF3ECFF)) {
+                Text("✨ Порада від Звукарика", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(it)
+            }
+        }
         Spacer(Modifier.height(24.dp))
         BigButton("На головну", onClick = onExit, modifier = Modifier.fillMaxWidth(), emoji = "🏠", enabled = saved)
     }

@@ -11,6 +11,7 @@ serialization = "1.8.1"
 camerax = "1.4.2"
 junit = "4.13.2"
 coroutines = "1.10.2"
+anthropic = "3.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,6 +37,7 @@ androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", 
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+anthropic-java = { group = "com.anthropic", name = "anthropic-java", version.ref = "anthropic" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

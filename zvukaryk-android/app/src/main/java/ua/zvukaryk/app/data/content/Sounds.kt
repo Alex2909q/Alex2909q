@@ -10,6 +10,7 @@ object Sounds {
         SoundsSonorants.L, SoundsSonorants.R,
     )
     private val byId = all.associateBy { it.id }
+    val ids: Set<String> = byId.keys
     fun get(id: String): SpeechSound = byId.getValue(id)
     fun find(id: String): SpeechSound? = byId[id]
 

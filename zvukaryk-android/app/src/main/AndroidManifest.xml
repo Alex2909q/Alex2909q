@@ -2,7 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Мікрофон: запис/прослуховування та вимір гучності. Камера: режим «дзеркало». Без INTERNET: усі дані лише на пристрої. -->
+    <!-- Мікрофон: запис/прослуховування та вимір гучності. Камера: режим «дзеркало».
+         INTERNET: лише для помічника Claude (Anthropic API), коли батьки ввели API-ключ; аудіо не надсилається. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

@@ -176,7 +176,17 @@ data class Settings(
     val ttsEnabled: Boolean = true,
     val autoRecordSeconds: Int = 3,
     val reminderHour: Int = 18,
-)
+    /** Голосовий супровід: промовляти завдання, приклади й коментарі. */
+    val voiceCoachEnabled: Boolean = true,
+    /** Помічник Claude (Anthropic API). Потрібен API-ключ з console.anthropic.com. */
+    val claudeEnabled: Boolean = false,
+    val claudeApiKey: String = "",
+    val claudeModel: String = "claude-opus-5-5",
+    /** Казка від Звукарика з цільовими словами на рівнях «Речення» і вище. */
+    val claudeStoryEnabled: Boolean = true,
+) {
+    val claudeConfigured: Boolean get() = claudeEnabled && claudeApiKey.isNotBlank()
+}
 
 @Serializable
 data class ScreeningAnswers(
@@ -206,4 +216,7 @@ data class AppState(
     val screening: ScreeningAnswers = ScreeningAnswers(),
 ) {
     fun progressFor(soundId: String): SoundProgress = progress[soundId] ?: SoundProgress(soundId)
+
+    /** Цільові звуки, які існують у поточному контенті (захист від перейменувань між версіями). */
+    fun validTargets(known: Set<String>): List<String> = targetSounds.filter { it in known }
 }

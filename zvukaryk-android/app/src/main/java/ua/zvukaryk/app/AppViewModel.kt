@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ua.zvukaryk.app.ai.ClaudeAgent
+import ua.zvukaryk.app.ai.VoiceCoach
 import ua.zvukaryk.app.data.content.Stickers
 import ua.zvukaryk.app.data.model.*
 import ua.zvukaryk.app.data.progress.ProgressRepository
@@ -26,6 +28,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val planner = SessionPlanner()
 
     val state: StateFlow<AppState?> = repo.state.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Голосовий супровід (офлайн TTS). */
+    val voice = VoiceCoach(tts) { state.value?.settings?.let { it.ttsEnabled && it.voiceCoachEnabled } ?: true }
+
+    /** Помічник Claude (Anthropic API, tool use). Говорить з дитиною через voice. */
+    val claude = ClaudeAgent(
+        settings = { state.value?.settings ?: Settings() },
+        state = { state.value },
+        speak = { text -> voice.say(text) },
+    )
+
+    /** Щоб привітання на головному екрані звучало один раз за запуск. */
+    var greeted: Boolean = false
 
     fun plan(state: AppState, soundId: String): SessionPlan = planner.plan(state, soundId)
 

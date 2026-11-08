@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -66,11 +67,12 @@ fun SoftCard(modifier: Modifier = Modifier, color: Color = Color.White, content:
 
 /** Шапка кроку заняття з прогресом і кнопкою виходу. */
 @Composable
-fun StepHeader(title: String, stepIndex: Int, stepCount: Int, onExit: () -> Unit, parentTip: String? = null) {
+fun StepHeader(title: String, stepIndex: Int, stepCount: Int, onExit: () -> Unit, parentTip: String? = null, onRepeatTask: (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onExit) { Icon(Icons.Default.Close, contentDescription = "Завершити") }
             Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            if (onRepeatTask != null) IconButton(onClick = onRepeatTask) { Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Повторити завдання") }
             Text("${stepIndex + 1}/$stepCount", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         LinearProgressIndicator(

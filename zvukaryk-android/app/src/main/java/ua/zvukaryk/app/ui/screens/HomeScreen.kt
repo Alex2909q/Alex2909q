@@ -39,9 +39,15 @@ fun HomeScreen(
     val today = LocalDate.now().toEpochDay()
     val practicedToday = state.lastPracticeEpochDay == today
     // Сьогоднішній звук: чергуємо цільові звуки за днями, щоб чергування було передбачуваним.
-    val targets = state.targetSounds.ifEmpty { listOf(Sounds.all.first().id) }
+    val targets = state.validTargets(Sounds.ids).ifEmpty { listOf(Sounds.all.first().id) }
     val todaySound = Sounds.get(targets[(today % targets.size).toInt()])
     val progress = state.progressFor(todaySound.id)
+    LaunchedEffect(Unit) {
+        if (!vm.greeted) {
+            vm.greeted = true
+            vm.voice.say(vm.voice.greeting(state.profile.name, todaySound, practicedToday))
+        }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(12.dp))
@@ -71,7 +77,10 @@ fun HomeScreen(
             Spacer(Modifier.height(16.dp))
             BigButton("Грати", onClick = { onStartSession(todaySound.id) }, color = Sunny, contentColor = Ink, emoji = "▶️", modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = { onOpenSound(todaySound.id) }) { Text("Як сказати цей звук?", color = Color.White) }
+            Row {
+                TextButton(onClick = { onOpenSound(todaySound.id) }) { Text("Як сказати цей звук?", color = Color.White) }
+                TextButton(onClick = { vm.voice.say(vm.voice.greeting(state.profile.name, todaySound, practicedToday)) }) { Text("🔊 Повтори", color = Color.White) }
+            }
         }
         Spacer(Modifier.height(16.dp))
 
@@ -128,7 +137,7 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        val stalled = state.targetSounds.map { state.progressFor(it) }.filter { MasteryRules.isStalled(it) }
+        val stalled = targets.map { state.progressFor(it) }.filter { MasteryRules.isStalled(it) }
         if (stalled.isNotEmpty()) {
             SoftCard(color = Color(0xFFFFF1E6)) {
                 Text("Порада для дорослих", style = MaterialTheme.typography.titleMedium)

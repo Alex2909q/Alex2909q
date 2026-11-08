@@ -27,12 +27,14 @@ fun MouthAnimation(pose: MouthPose, modifier: Modifier = Modifier) {
     val tongueWidth by animateFloatAsState(pose.tongueWidth, spec, label = "tongueWidth")
     val cup by animateFloatAsState(pose.cup, spec, label = "cup")
 
-    val infinite = rememberInfiniteTransition(label = "vibe")
-    val phase by infinite.animateFloat(
-        0f, (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing)), label = "phase",
-    )
-    val vibrate = if (pose.vibrate) sin(phase) else 0f
+    val vibrate = if (pose.vibrate) {
+        val infinite = rememberInfiniteTransition(label = "vibe")
+        val phase by infinite.animateFloat(
+            0f, (2 * Math.PI).toFloat(),
+            animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing)), label = "phase",
+        )
+        sin(phase)
+    } else 0f
 
     Canvas(modifier) {
         val s = size.minDimension

@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,7 +40,13 @@ fun ZvukarykApp(vm: AppViewModel = viewModel()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
-    NavHost(navController = nav, startDestination = if (current.onboarded) Routes.HOME else Routes.ONBOARDING) {
+    val start = remember { if (current.onboarded) Routes.HOME else Routes.ONBOARDING }
+    LaunchedEffect(current.onboarded) {
+        if (!current.onboarded && nav.currentDestination?.route != Routes.ONBOARDING) {
+            nav.navigate(Routes.ONBOARDING) { popUpTo(0) }
+        }
+    }
+    NavHost(navController = nav, startDestination = start) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(vm = vm, onFinished = {
                 nav.navigate(Routes.HOME) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
