@@ -58,6 +58,13 @@ class SessionPlannerTest {
     }
 
     @Test
+    fun storyStepAppearsOfflineFromSentencesLevel() {
+        assertTrue(planner.plan(stateAt(Level.SENTENCES), "s").steps.any { it is SessionStep.Story })
+        assertFalse(planner.plan(stateAt(Level.WORDS), "s").steps.any { it is SessionStep.Story })
+        assertFalse(planner.plan(stateAt(Level.SENTENCES, Settings(claudeStoryEnabled = false)), "s").steps.any { it is SessionStep.Story })
+    }
+
+    @Test
     fun sessionBudgetScalesWithMinutes() {
         assertEquals(42, planner.trialBudget(7))
         assertEquals(16, planner.trialBudget(1))

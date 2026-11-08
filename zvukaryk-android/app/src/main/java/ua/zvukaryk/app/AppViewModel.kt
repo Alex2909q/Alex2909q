@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ua.zvukaryk.app.ai.Assistant
 import ua.zvukaryk.app.ai.ClaudeAgent
 import ua.zvukaryk.app.ai.VoiceCoach
 import ua.zvukaryk.app.data.content.Stickers
@@ -38,6 +39,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         state = { state.value },
         speak = { text -> voice.say(text) },
     )
+
+    /** Звукарик-помічник: офлайн за замовчуванням, Claude — якщо батьки ввімкнули й ввели ключ. */
+    val assistant = Assistant(claude, voice) { state.value }
 
     /** Щоб привітання на головному екрані звучало один раз за запуск. */
     var greeted: Boolean = false

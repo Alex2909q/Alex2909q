@@ -31,7 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ua.zvukaryk.app.AppViewModel
-import ua.zvukaryk.app.ai.ClaudeAgent
+import ua.zvukaryk.app.ai.Assistant
 import ua.zvukaryk.app.data.content.BreathingGame
 import ua.zvukaryk.app.data.model.*
 import ua.zvukaryk.app.domain.ListeningRound
@@ -216,30 +216,24 @@ private fun PlacementStep(sound: SpeechSound, vm: AppViewModel, onDone: () -> Un
             BigButton("Послухати", onClick = { vm.voice.say(sound.onomatopoeia) }, modifier = Modifier.weight(1f), emoji = "🔊", color = Sunny, contentColor = Ink)
             BigButton("Зрозуміло", onClick = onDone, modifier = Modifier.weight(1f), emoji = "👍")
         }
-        if (vm.claude.isConfigured) {
-            Spacer(Modifier.height(10.dp))
-            ClaudeHintButton(label = "Звукарику, поясни інакше", onRequest = { vm.claude.explainSoundDifferently(sound.id) })
-        }
+        Spacer(Modifier.height(10.dp))
+        HelperButton(label = "Звукарику, поясни інакше", onRequest = { vm.assistant.explain(sound.id) })
         Spacer(Modifier.height(20.dp))
     }
 }
 
-/** Кнопка-запит до помічника Claude: показує відповідь текстом; озвучення робить сам агент через speak_to_child. */
+/** Кнопка-запит до Звукарика-помічника: відповідь озвучується й показується текстом. Працює офлайн. */
 @Composable
-fun ClaudeHintButton(label: String, onRequest: suspend () -> ClaudeAgent.Result, modifier: Modifier = Modifier) {
+fun HelperButton(label: String, onRequest: suspend () -> Assistant.Reply, modifier: Modifier = Modifier) {
     var busy by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     Column(modifier.fillMaxWidth()) {
         OutlinedButton(
             onClick = {
-                busy = true; error = null
+                busy = true
                 scope.launch {
-                    when (val r = onRequest()) {
-                        is ClaudeAgent.Result.Text -> text = r.text
-                        is ClaudeAgent.Result.Error -> error = r.message
-                    }
+                    text = onRequest().text
                     busy = false
                 }
             },
@@ -249,39 +243,34 @@ fun ClaudeHintButton(label: String, onRequest: suspend () -> ClaudeAgent.Result,
             else Text("✨ $label")
         }
         text?.let { Spacer(Modifier.height(6.dp)); SoftCard(color = Color(0xFFF3ECFF)) { Text(it, style = MaterialTheme.typography.bodyLarge) } }
-        error?.let { Spacer(Modifier.height(6.dp)); Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 
-/* ----------------------------- Казка від Звукарика (Claude) ----------------------------- */
+/* ----------------------------- Казка від Звукарика ----------------------------- */
 
 @Composable
 private fun StoryStep(step: SessionStep.Story, vm: AppViewModel, onRate: (Rating) -> Unit, onDone: () -> Unit) {
     var sentences by remember { mutableStateOf<List<String>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var fromClaude by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var index by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        when (val r = vm.claude.storyForChild(step.sound.id)) {
-            is ClaudeAgent.Result.Text -> sentences = ClaudeAgent.splitSentences(r.text).take(8)
-            is ClaudeAgent.Result.Error -> error = r.message
-        }
+        val (parts, claude) = vm.assistant.storySentences(step.sound.id)
+        sentences = parts; fromClaude = claude
         loading = false
     }
     LaunchedEffect(index, sentences) { sentences.getOrNull(index)?.let { vm.voice.say(it, slow = true) } }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        ParentTip("Казку склав помічник Claude зі слів на звук ${step.sound.letter}. Дитина повторює кожне речення; оцініть, чи звук був чітким. Текст надсилається до Anthropic API, аудіо — ні.")
+        ParentTip(
+            (if (fromClaude) "Казку склав помічник Claude" else "Казка зі слів") +
+                " на звук ${step.sound.letter}: у кожному реченні він є. Дитина повторює речення за Звукариком, а ви оцінюєте, чи звук був чітким.",
+        )
         Spacer(Modifier.height(8.dp))
         when {
             loading -> {
                 Spacer(Modifier.height(40.dp)); CircularProgressIndicator(); Spacer(Modifier.height(12.dp))
                 Text("Звукарик складає казку…", style = MaterialTheme.typography.titleMedium)
-            }
-            error != null -> {
-                Text("Казка сьогодні не вийшла: $error", color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(16.dp))
-                BigButton("Далі", onClick = onDone, modifier = Modifier.fillMaxWidth(), emoji = "➡️")
             }
             sentences.isEmpty() -> { LaunchedEffect(Unit) { onDone() } }
             else -> {
@@ -554,17 +543,10 @@ private fun FinishScreen(
 ) {
     var sticker by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf(false) }
-    var claudeTip by remember { mutableStateOf<String?>(null) }
+    var helperTip by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         vm.recordSession(sound.id, level, trials, correct, almost, durationSec) { s -> sticker = s; saved = true }
-        if (vm.claude.isConfigured && trials > 0) {
-            when (val r = vm.claude.sessionSummary(sound.id, level, trials, correct, almost)) {
-                is ClaudeAgent.Result.Text -> claudeTip = r.text
-                is ClaudeAgent.Result.Error -> vm.voice.say("Ура! Заняття завершено. Ти молодець!")
-            }
-        } else {
-            vm.voice.say("Ура! Заняття завершено. Ти молодець!")
-        }
+        helperTip = vm.assistant.sessionSummary(sound.id, level, trials, correct, almost).text
     }
     val accuracy = if (trials == 0) 0 else ((correct + almost / 2f) / trials * 100).toInt()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -596,15 +578,17 @@ private fun FinishScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
-        ParentTip(
-            when {
-                trials == 0 -> "Нічого страшного: іноді достатньо просто подивитися й послухати. Спробуйте завтра у той самий час."
-                accuracy >= 80 -> "Чудовий результат. Якщо так буде 2 заняття поспіль (≥20 спроб) — перейдемо на наступний рівень автоматично."
-                accuracy >= 50 -> "Хороша робота. Звук ще закріплюється — це нормально, залишаємося на цьому рівні."
-                else -> "Якщо звук виходить рідко кілька занять поспіль — можливо, його ще не «поставлено». Порадьтеся з логопедом."
-            },
-        )
-        claudeTip?.let {
+        if (helperTip == null) {
+            ParentTip(
+                when {
+                    trials == 0 -> "Нічого страшного: іноді достатньо просто подивитися й послухати. Спробуйте завтра у той самий час."
+                    accuracy >= 80 -> "Чудовий результат. Якщо так буде 2 заняття поспіль (≥20 спроб) — перейдемо на наступний рівень автоматично."
+                    accuracy >= 50 -> "Хороша робота. Звук ще закріплюється — це нормально, залишаємося на цьому рівні."
+                    else -> "Якщо звук виходить рідко кілька занять поспіль — можливо, його ще не «поставлено». Порадьтеся з логопедом."
+                },
+            )
+        }
+        helperTip?.let {
             Spacer(Modifier.height(12.dp))
             SoftCard(color = Color(0xFFF3ECFF)) {
                 Text("✨ Порада від Звукарика", style = MaterialTheme.typography.titleMedium)

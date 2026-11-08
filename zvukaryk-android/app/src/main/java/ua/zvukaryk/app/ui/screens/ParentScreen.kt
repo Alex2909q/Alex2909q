@@ -25,6 +25,8 @@ import kotlinx.coroutines.launch
 import ua.zvukaryk.app.data.content.Sounds
 import ua.zvukaryk.app.data.model.AppState
 import ua.zvukaryk.app.domain.MasteryRules
+import ua.zvukaryk.app.domain.Advisor
+import ua.zvukaryk.app.domain.RedFlags
 import ua.zvukaryk.app.ui.components.*
 import ua.zvukaryk.app.ui.theme.Coral
 import java.time.LocalDate
@@ -39,7 +41,7 @@ fun ParentScreen(state: AppState, vm: AppViewModel, onBack: () -> Unit, onOpenSo
     Column(Modifier.fillMaxSize().padding(top = 4.dp)) {
         BackTopBar("Для батьків", onBack)
         TabRow(selectedTabIndex = tab) {
-            listOf("Прогрес", "Помічник", "Налаштування", "Методика").forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+            listOf("Прогрес", "Порадник", "Налаштування", "Методика").forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
         }
         if (tab == 1) {
             AssistantTab(state, vm)
@@ -77,7 +79,7 @@ private fun ProgressTab(state: AppState, onOpenSound: (String) -> Unit, onShare:
         StatPill("🔥", "${state.streakDays}", "серія днів", Modifier.weight(1f))
     }
     Spacer(Modifier.height(16.dp))
-    val flags = redFlags(state)
+    val flags = RedFlags.compute(state)
     if (flags.isNotEmpty()) {
         SoftCard(color = Color(0xFFFFE3E3)) {
             Text("Варто показати дитину логопеду", style = MaterialTheme.typography.titleLarge, color = Coral)
@@ -131,6 +133,7 @@ private fun SettingsTab(state: AppState, vm: AppViewModel, onReset: () -> Unit) 
         ToggleRow("Дихальна гра перед звуком", s.breathingEnabled) { v -> vm.updateSettings { st -> st.copy(breathingEnabled = v) } }
         ToggleRow("Озвучувати зразки та підказки", s.ttsEnabled) { v -> vm.updateSettings { st -> st.copy(ttsEnabled = v) } }
         ToggleRow("Голосовий супровід: промовляти завдання й приклади", s.voiceCoachEnabled) { v -> vm.updateSettings { st -> st.copy(voiceCoachEnabled = v) } }
+        ToggleRow("Казка від Звукарика в заняттях (з рівня «Речення»)", s.claudeStoryEnabled) { v -> vm.updateSettings { st -> st.copy(claudeStoryEnabled = v) } }
         var recSec by remember(s.autoRecordSeconds) { mutableFloatStateOf(s.autoRecordSeconds.toFloat()) }
         Text("Тривалість запису: ${recSec.toInt()} с")
         Slider(value = recSec, onValueChange = { recSec = it }, onValueChangeFinished = { vm.updateSettings { st -> st.copy(autoRecordSeconds = recSec.toInt()) } }, valueRange = 2f..6f, steps = 3)
@@ -164,7 +167,7 @@ private fun SettingsTab(state: AppState, vm: AppViewModel, onReset: () -> Unit) 
     SoftCard {
         Text("Приватність", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(6.dp))
-        Text("Записи голосу зберігаються лише тимчасово в кеші пристрою й перезаписуються, аудіо нікуди не надсилається. Інтернет використовується лише для помічника Claude, і лише якщо ви ввели API-ключ: тоді до Anthropic API надсилаються текст запитів, ім'я, вік і статистика занять. Реклами й аналітики немає.", style = MaterialTheme.typography.bodyMedium)
+        Text("Застосунок працює без інтернету. Записи голосу зберігаються лише тимчасово в кеші пристрою, аудіо нікуди не надсилається. Інтернет потрібен тільки якщо ви самі ввімкнете Claude з API-ключем: тоді до Anthropic надсилаються текст запитів, ім'я, вік і статистика занять. Реклами й аналітики немає.", style = MaterialTheme.typography.bodyMedium)
     }
     Spacer(Modifier.height(16.dp))
     OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) { Text("Скинути всі дані", color = Coral) }
@@ -226,22 +229,6 @@ private fun MethodTab() {
     }
 }
 
-private fun redFlags(state: AppState): List<String> {
-    val f = mutableListOf<String>()
-    val s = state.screening
-    val age = state.profile.ageYears
-    if (s.hearingConcern) f += "Є сумніви щодо слуху — спочатку перевірка слуху."
-    if (s.vowelErrors) f += "Помилки у голосних — нетиповий тип помилок у будь-якому віці."
-    if (s.inconsistent) f += "Непослідовна вимова того самого слова — потребує оцінки фахівця."
-    if (s.stuttering) f += "Запинки / заїкання — окрема консультація логопеда."
-    if (s.frustration) f += "Дитина засмучується через нерозуміння — не відкладайте консультацію."
-    if (age >= 4 && s.intelligibilityParents <= 2) f += "У $age р. батьки розуміють дитину лише частково."
-    if (age >= 5 && s.intelligibilityStrangers <= 1) f += "У $age р. незнайомі дорослі майже не розуміють дитину."
-    s.problemSounds.map { Sounds.get(it) }.filter { it.ageNormTo <= age }.forEach { f += "Звук ${it.letter} ще не сформовано у $age р. (норма до ${it.ageNormTo} р.)." }
-    state.validTargets(Sounds.ids).map { state.progressFor(it) }.filter { MasteryRules.isStalled(it) }.forEach { f += "Звук ${Sounds.get(it.soundId).letter}: ${it.sessionsAtLevel} занять без прогресу." }
-    return f
-}
-
 internal fun buildReport(state: AppState): String = buildString {
     appendLine("Звукарик — звіт про домашні заняття")
     appendLine("Дитина: ${state.profile.name}, ${state.profile.ageYears} р.  Дата: ${LocalDate.now()}")
@@ -255,7 +242,7 @@ internal fun buildReport(state: AppState): String = buildString {
             appendLine("  ${LocalDate.ofEpochDay(r.epochDay)} · ${r.level.shortTitle} · ${r.trials} спроб · $acc % чітко · ${maxOf(1, r.durationSec / 60)} хв")
         }
     }
-    val flags = redFlags(state)
+    val flags = RedFlags.compute(state)
     if (flags.isNotEmpty()) { appendLine(); appendLine("Зауваження з анкети:"); flags.forEach { appendLine("  • $it") } }
     appendLine()
     appendLine("Сформовано застосунком Звукарик. Оцінки спроб виставляв дорослий під час занять.")
@@ -272,16 +259,15 @@ private fun ClaudeSettingsCard(state: AppState, vm: AppViewModel) {
     var testing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     SoftCard(color = Color(0xFFF3ECFF)) {
-        Text("✨ Помічник Claude (Anthropic API)", style = MaterialTheme.typography.titleLarge)
+        Text("✨ Claude (необов'язково)", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Claude говорить з дитиною голосом: вітає, пояснює звук по-своєму, складає казки й загадки зі словами на потрібний звук, " +
-                "підбиває підсумок заняття і відповідає на запитання батьків із доступом до прогресу дитини (вкладка «Помічник»).",
+            "Звукарик-помічник уже працює без інтернету: пояснення, казки, загадки, підсумки й порадник вбудовані в застосунок. " +
+                "Якщо колись з'явиться API-ключ Anthropic, Claude складатиме нові казки щоразу й відповідатиме на будь-які запитання. Без ключа нічого вмикати не треба.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Spacer(Modifier.height(8.dp))
-        ToggleRow("Увімкнути помічника", s.claudeEnabled) { v -> vm.updateSettings { st -> st.copy(claudeEnabled = v) } }
-        ToggleRow("Казка від Звукарика в заняттях (з рівня «Речення»)", s.claudeStoryEnabled) { v -> vm.updateSettings { st -> st.copy(claudeStoryEnabled = v) } }
+        ToggleRow("Використовувати Claude", s.claudeEnabled) { v -> vm.updateSettings { st -> st.copy(claudeEnabled = v) } }
         OutlinedTextField(
             value = key, onValueChange = { key = it.trim() },
             label = { Text("API-ключ Anthropic (sk-ant-…)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -325,7 +311,7 @@ private fun ClaudeSettingsCard(state: AppState, vm: AppViewModel) {
 
 /* ----------------------------- Помічник Claude: чат для батьків ----------------------------- */
 
-private data class ChatMsg(val fromUser: Boolean, val text: String, val isError: Boolean = false)
+private data class ChatMsg(val fromUser: Boolean, val text: String)
 
 @Composable
 private fun AssistantTab(state: AppState, vm: AppViewModel) {
@@ -334,45 +320,39 @@ private fun AssistantTab(state: AppState, vm: AppViewModel) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val suggestions = listOf(
-        "Як у нас справи зі звуками? Що робити далі?",
-        "Дитина каже «либа» замість «риба». Це нормально для її віку?",
-        "Склади план домашніх занять на тиждень.",
-        "Як правильно хвалити, щоб дитина не втрачала інтерес?",
-        "Коли нам точно потрібен логопед?",
-    )
+    val personal = remember(state) { Advisor.personalAdvice(state) }
     fun send(text: String) {
         if (text.isBlank() || busy) return
         messages += ChatMsg(true, text)
         input = ""; busy = true
         scope.launch {
-            when (val r = vm.claude.parentChat(text)) {
-                is ClaudeAgent.Result.Text -> messages += ChatMsg(false, r.text)
-                is ClaudeAgent.Result.Error -> messages += ChatMsg(false, r.message, isError = true)
-            }
+            messages += ChatMsg(false, vm.assistant.parentAnswer(text).text)
             busy = false
-            listState.animateScrollToItem(maxOf(0, messages.size - 1))
+            listState.animateScrollToItem(maxOf(0, messages.size))
         }
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        if (!state.settings.claudeConfigured) {
-            Spacer(Modifier.height(16.dp))
-            SoftCard(color = Color(0xFFFFF1E6)) {
-                Text("Помічник не налаштований", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(6.dp))
-                Text("Увімкніть помічника й додайте API-ключ Anthropic у вкладці «Налаштування». Після цього тут можна ставити запитання про прогрес дитини, а Звукарик зможе розповідати дитині казки голосом.")
-            }
-            return
-        }
         LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                SoftCard(color = Color(0xFFE3F7EA)) {
+                    Text("Персональна порада", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(personal, style = MaterialTheme.typography.bodyLarge)
+                    TextButton(onClick = { vm.voice.say(personal) }, contentPadding = PaddingValues(0.dp)) { Text("🔊 Озвучити") }
+                }
+            }
             if (messages.isEmpty()) {
                 item {
                     SoftCard(color = Color(0xFFF3ECFF)) {
                         Text("✨ Запитайте Звукарика", style = MaterialTheme.typography.titleLarge)
-                        Text("Він бачить прогрес дитини, матеріал звуків і методику. Не ставить діагнозів — радить, коли йти до логопеда.", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (vm.assistant.usesClaude) "Відповідає Claude: бачить прогрес дитини й методику. Не ставить діагнозів."
+                            else "Працює без інтернету: відповіді за логопедичною методикою з урахуванням прогресу дитини. Не ставить діагнозів.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                         Spacer(Modifier.height(8.dp))
-                        suggestions.forEach { q -> TextButton(onClick = { send(q) }) { Text("• $q") } }
+                        Advisor.topics.forEach { t -> TextButton(onClick = { send(t.question) }) { Text("• ${t.question}") } }
                     }
                 }
             }
@@ -382,11 +362,11 @@ private fun AssistantTab(state: AppState, vm: AppViewModel) {
                         Modifier
                             .fillMaxWidth(0.88f)
                             .clip(RoundedCornerShape(18.dp))
-                            .background(if (m.fromUser) MaterialTheme.colorScheme.primary else if (m.isError) Color(0xFFFFE3E3) else Color.White)
+                            .background(if (m.fromUser) MaterialTheme.colorScheme.primary else Color.White)
                             .padding(12.dp),
                     ) {
                         Text(m.text, color = if (m.fromUser) Color.White else Ink, style = MaterialTheme.typography.bodyLarge)
-                        if (!m.fromUser && !m.isError) {
+                        if (!m.fromUser) {
                             TextButton(onClick = { vm.voice.say(m.text) }, contentPadding = PaddingValues(0.dp)) { Text("🔊 Озвучити") }
                         }
                     }
@@ -394,11 +374,11 @@ private fun AssistantTab(state: AppState, vm: AppViewModel) {
             }
             if (busy) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("Звукарик думає…") } }
         }
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f), placeholder = { Text("Запитання про заняття…") }, maxLines = 3)
             Spacer(Modifier.width(8.dp))
             Button(onClick = { send(input) }, enabled = !busy && input.isNotBlank()) { Text("➤") }
         }
-        TextButton(onClick = { messages.clear(); vm.claude.resetParentChat() }, modifier = Modifier.align(Alignment.End)) { Text("Нова розмова") }
+        TextButton(onClick = { messages.clear(); vm.assistant.resetParentChat() }, modifier = Modifier.align(Alignment.End)) { Text("Нова розмова") }
     }
 }

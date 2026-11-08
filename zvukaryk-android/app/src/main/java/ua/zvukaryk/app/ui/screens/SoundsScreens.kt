@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ua.zvukaryk.app.AppViewModel
-import ua.zvukaryk.app.ai.ClaudeAgent
 import ua.zvukaryk.app.data.content.ArticulationExercises
 import ua.zvukaryk.app.data.content.Sounds
 import ua.zvukaryk.app.data.model.AppState
@@ -81,18 +80,16 @@ fun SoundDetailScreen(state: AppState, vm: AppViewModel, soundId: String, onBack
                 Text(sound.articulation.childCue, style = MaterialTheme.typography.bodyLarge)
                 TextButton(onClick = { vm.voice.say(sound.articulation.childCue) }) { Text("🔊 Озвучити підказку") }
             }
-            if (vm.claude.isConfigured) {
-                Spacer(Modifier.height(12.dp))
-                SoftCard(color = Color(0xFFF3ECFF)) {
-                    Text("✨ Звукарик-помічник", style = MaterialTheme.typography.titleLarge)
-                    Text("Персональні пояснення, казки й загадки зі словами на звук ${sound.letter}. Озвучується голосом.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    ClaudeHintButton("Поясни звук інакше", onRequest = { vm.claude.explainSoundDifferently(sound.id) })
-                    Spacer(Modifier.height(6.dp))
-                    ClaudeHintButton("Розкажи казку", onRequest = { speakStory(vm, sound.id) })
-                    Spacer(Modifier.height(6.dp))
-                    ClaudeHintButton("Загадай загадки", onRequest = { vm.claude.riddlesForChild(sound.id).also { r -> if (r is ClaudeAgent.Result.Text) vm.voice.say(r.text) } })
-                }
+            Spacer(Modifier.height(12.dp))
+            SoftCard(color = Color(0xFFF3ECFF)) {
+                Text("✨ Звукарик-помічник", style = MaterialTheme.typography.titleLarge)
+                Text("Інші пояснення, казки й загадки зі словами на звук ${sound.letter}. Усе озвучується й працює без інтернету.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                HelperButton("Поясни звук інакше", onRequest = { vm.assistant.explain(sound.id) })
+                Spacer(Modifier.height(6.dp))
+                HelperButton("Розкажи казку", onRequest = { vm.assistant.tellStory(sound.id) })
+                Spacer(Modifier.height(6.dp))
+                HelperButton("Загадай загадку", onRequest = { vm.assistant.riddle(sound.id) })
             }
             Spacer(Modifier.height(12.dp))
             SoftCard {
@@ -192,9 +189,3 @@ fun StickersScreen(state: AppState, onBack: () -> Unit) {
 }
 
 
-/** Казка: озвучити цілком (на екрані звука); у занятті вона йде реченнями. */
-private suspend fun speakStory(vm: AppViewModel, soundId: String): ClaudeAgent.Result {
-    val r = vm.claude.storyForChild(soundId)
-    if (r is ClaudeAgent.Result.Text) vm.voice.say(r.text, slow = true)
-    return r
-}

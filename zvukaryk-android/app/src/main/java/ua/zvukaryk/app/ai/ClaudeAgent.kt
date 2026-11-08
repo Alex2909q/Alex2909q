@@ -53,7 +53,7 @@ class ClaudeAgent(
 
         /** Розбити текст казки на речення для почергового промовляння. */
         fun splitSentences(text: String): List<String> =
-            text.replace("\n", " ").split(Regex("(?<=[.!?…])\\s+")).map { it.trim() }.filter { it.length > 1 }
+            text.replace("\n", " ").split(Regex("(?<=[.!?…][»\"]?)\\s+(?!—)")).map { it.trim() }.filter { it.length > 1 }
     }
 
     sealed class Result {

@@ -34,7 +34,7 @@ sealed class SessionStep {
     data class Conversation(val sound: SpeechSound, val prompts: List<String>) : SessionStep() {
         override val title = "Вільна розмова"
     }
-    /** Казка від Звукарика (Claude): персоналізований текст із цільовими словами, дитина повторює речення за реченням. */
+    /** Казка від Звукарика: текст із цільовими словами, дитина повторює речення за реченням (офлайн або Claude). */
     data class Story(val sound: SpeechSound) : SessionStep() {
         override val title = "Казка від Звукарика"
     }
@@ -98,8 +98,8 @@ class SessionPlanner(private val random: Random = Random.Default) {
             if (rounds.isNotEmpty()) steps += SessionStep.Listening(sound, rounds)
         }
 
-        // Казка з цільовими словами — лише коли налаштовано помічника Claude і рівень уже «Речення» чи вище.
-        if (settings.claudeConfigured && settings.claudeStoryEnabled && level >= Level.SENTENCES) {
+        // Казка з цільовими словами — з рівня «Речення» (зв'язний текст доречний лише після фраз).
+        if (settings.claudeStoryEnabled && level >= Level.SENTENCES) {
             steps += SessionStep.Story(sound)
         }
 
